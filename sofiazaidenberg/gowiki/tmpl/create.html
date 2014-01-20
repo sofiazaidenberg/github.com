@@ -1,0 +1,13 @@
+<h1>Creating new page</h1>
+
+<div>
+Title:<br>
+<textarea name="title" rows="1" cols="80">{{scanf "%s" .Title}}</textarea></div>
+<div>
+
+<form action="/save/{{.Title}}" method="POST">
+<div>
+Body:<br>
+<textarea name="body" rows="20" cols="80"></textarea></div>
+<div><input type="submit" value="Save"></div>
+</form>

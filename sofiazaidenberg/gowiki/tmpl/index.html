@@ -1,0 +1,9 @@
+<h1>{{.Name}}</h1>
+
+<p>[<a href="/create/">create</a>]</p>
+
+<p>
+{{range .Pages}}
+    <li><a href="view/{{.}}">{{.}}</a></li>
+{{end}}
+</p>

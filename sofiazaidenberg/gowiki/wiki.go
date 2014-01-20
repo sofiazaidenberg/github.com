@@ -5,14 +5,21 @@ import (
 	"html/template"
 	"io/ioutil"
 	"net/http"
-	"regexp"
 	"os"
+	"regexp"
+	"strings"
+	"fmt"
 )
 
 var tmplDir = "tmpl/"
 var dataDir = "data/"
-var templates = template.Must(template.ParseFiles(tmplDir+"edit.html", tmplDir+"view.html"))
+var templates = template.Must(template.ParseFiles(tmplDir+"edit.html", tmplDir+"view.html", tmplDir+"index.html", tmplDir+"create.html"))
 var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+
+type Site struct {
+	Name  string
+	Pages []string
+}
 
 type Page struct {
 	Title string
@@ -70,6 +77,21 @@ func editHandler(w http.ResponseWriter, r *http.Request, title string) {
 	renderTemplate(w, "edit", p)
 }
 
+func createHandler(w http.ResponseWriter, r *http.Request) {
+	p := new(Page)
+	renderTemplate(w, "create", p)
+	title := r.FormValue("title")
+	body := r.FormValue("body")
+	p.Title = title
+	p.Body = []byte(body)
+	err := p.save()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/view/"+title, http.StatusFound)
+}
+
 func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 	body := r.FormValue("body")
 	p := &Page{Title: title, Body: []byte(body)}
@@ -79,6 +101,39 @@ func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 		return
 	}
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
+}
+
+func renderHomeTemplate(w http.ResponseWriter, s *Site) {
+	err := templates.ExecuteTemplate(w, "index.html", s)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func homeHandler(w http.ResponseWriter, r *http.Request, name string) {
+	pwd, err := os.Getwd()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	//[]os.FileInfo
+	files, err := ioutil.ReadDir(pwd + "/" + dataDir)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	site := &Site{Name: name, Pages: make([]string, 0)}
+
+	for _, f := range files {
+		if !f.IsDir() {
+			name := f.Name()
+			if strings.LastIndex(name, ".txt") == len(name)-len(".txt") {
+				name = name[:len(name)-len(".txt")]
+				site.Pages = append(site.Pages, name)
+			}
+		}
+	}
+	renderHomeTemplate(w, site)
 }
 
 func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.HandlerFunc {
@@ -92,18 +147,28 @@ func makeHandler(fn func(http.ResponseWriter, *http.Request, string)) http.Handl
 	}
 }
 
+func makeHomeHandler(fn func(http.ResponseWriter, *http.Request, string), name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		fn(w, r, name)
+	}
+}
+
 func main() {
 	//	p1 := &Page{Title: "TestPage", Body: []byte("This is a sample Page.")}
 	//	p1.save()
 	//	p2, _ := loadPage("TestPage")
 	//	fmt.Println(string(p2.Body))
+	
+	fmt.Println("Initialized")
 
 	http.HandleFunc("/view/", makeHandler(viewHandler))
 	http.HandleFunc("/edit/", makeHandler(editHandler))
 	http.HandleFunc("/save/", makeHandler(saveHandler))
-	pwd, err := os.Getwd()
-	if err == nil {
-		http.Handle("/", http.FileServer(http.Dir(pwd+"/"+dataDir)))
-		}
+	http.HandleFunc("/create/", createHandler)
+	http.HandleFunc("/", makeHomeHandler(homeHandler, "WiKi"))
+	//	pwd, err := os.Getwd()
+	//	if err == nil {
+	//		http.Handle("/", http.FileServer(http.Dir(pwd+"/"+dataDir)))
+	//	}
 	http.ListenAndServe(":8080", nil)
 }
