@@ -78,18 +78,15 @@ func editHandler(w http.ResponseWriter, r *http.Request, title string) {
 }
 
 func createHandler(w http.ResponseWriter, r *http.Request) {
-	p := new(Page)
-	renderTemplate(w, "create", p)
+	renderTemplate(w, "create", nil)
+}
+
+func saveNewHandler(w http.ResponseWriter, r *http.Request) {
 	title := r.FormValue("title")
-	body := r.FormValue("body")
-	p.Title = title
-	p.Body = []byte(body)
-	err := p.save()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
+	if title == "" {
+		http.Redirect(w, r, "/create/", http.StatusFound)
 	}
-	http.Redirect(w, r, "/view/"+title, http.StatusFound)
+	saveHandler(w, r, title)
 }
 
 func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
@@ -164,6 +161,7 @@ func main() {
 	http.HandleFunc("/view/", makeHandler(viewHandler))
 	http.HandleFunc("/edit/", makeHandler(editHandler))
 	http.HandleFunc("/save/", makeHandler(saveHandler))
+	http.HandleFunc("/save/new", saveNewHandler)
 	http.HandleFunc("/create/", createHandler)
 	http.HandleFunc("/", makeHomeHandler(homeHandler, "WiKi"))
 	//	pwd, err := os.Getwd()
