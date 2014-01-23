@@ -2,19 +2,22 @@ package main
 
 import (
 	"errors"
+	"fmt"
+	"github.com/gorilla/sessions"
 	"html/template"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
-	"fmt"
+	//	"time"
 )
 
 var tmplDir = "tmpl/"
 var dataDir = "data/"
 var templates = template.Must(template.ParseFiles(tmplDir+"edit.html", tmplDir+"view.html", tmplDir+"index.html", tmplDir+"create.html"))
 var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+var store = sessions.NewCookieStore([]byte("something-very-secret"))
 
 type Site struct {
 	Name  string
@@ -24,9 +27,17 @@ type Site struct {
 type Page struct {
 	Title string
 	Body  []byte
+	Error string
+}
+
+func (p *Page) HasError() bool {
+	return p.Error != ""
 }
 
 func (p *Page) save() error {
+	if p.Title == "" {
+		return errors.New("Empty title not admitted")
+	}
 	filename := p.Title + ".txt"
 	return ioutil.WriteFile(dataDir+filename, p.Body, 0600)
 }
@@ -78,15 +89,43 @@ func editHandler(w http.ResponseWriter, r *http.Request, title string) {
 }
 
 func createHandler(w http.ResponseWriter, r *http.Request) {
-	renderTemplate(w, "create", nil)
+	session, _ := store.Get(r, "session-name")
+	p := new(Page)
+	if body, ok := session.Values["body"].(string); ok {
+		p.Body = []byte(body)
+		session.Values["body"] = ""
+	}
+	if err, ok := session.Values["error"].(string); ok {
+		p.Error = err
+		session.Values["error"] = ""
+	}
+	session.Save(r, w)
+	renderTemplate(w, "create", p)
 }
 
 func saveNewHandler(w http.ResponseWriter, r *http.Request) {
 	title := r.FormValue("title")
 	if title == "" {
-		http.Redirect(w, r, "/create/", http.StatusFound)
+		saveNewErrorHandler(w, r, errors.New("Empty title not admitted"))
+		return
 	}
-	saveHandler(w, r, title)
+	m := validPath.FindStringSubmatch("/save/"+title)
+	if m == nil {
+		fmt.Println("invalid title")
+		saveNewErrorHandler(w, r, errors.New("Invalid title"))
+		return
+	}
+	saveHandler(w, r, m[2])
+}
+
+func saveNewErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
+	body := r.FormValue("body")
+	session, _ := store.Get(r, "session-name")
+	session.Values["body"] = body
+	session.Values["error"] = fmt.Sprintf("%s", err)
+	session.Save(r, w)
+
+	http.Redirect(w, r, "/create/", http.StatusFound)
 }
 
 func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
@@ -150,12 +189,33 @@ func makeHomeHandler(fn func(http.ResponseWriter, *http.Request, string), name s
 	}
 }
 
+func Test(w http.ResponseWriter, r *http.Request) {
+	//	c := &http.Cookie{
+	//		Name:		"foo",
+	//		Value:		"bar",
+	//		Expires:	time.Now().Add(1 * time.Hour),
+	//		Domain:		".godev.local",	// edit (or omit)
+	//		Path:		"/",		// ^ ditto
+	//		HttpOnly:	true,
+	//	}
+	//	//fmt.Fprintln(w, "Hello world")
+	//	http.SetCookie(w, c)
+	// Get a session. We're ignoring the error resulted from decoding an
+	// existing session: Get() always returns a session, even if empty.
+	session, _ := store.Get(r, "session-name")
+	// Set some session values.
+	session.Values["foo"] = "bar"
+	session.Values[42] = 43
+	// Save it.
+	session.Save(r, w)
+}
+
 func main() {
 	//	p1 := &Page{Title: "TestPage", Body: []byte("This is a sample Page.")}
 	//	p1.save()
 	//	p2, _ := loadPage("TestPage")
 	//	fmt.Println(string(p2.Body))
-	
+
 	fmt.Println("Initialized")
 
 	http.HandleFunc("/view/", makeHandler(viewHandler))
@@ -169,4 +229,6 @@ func main() {
 	//		http.Handle("/", http.FileServer(http.Dir(pwd+"/"+dataDir)))
 	//	}
 	http.ListenAndServe(":8080", nil)
+
+	//	http.ListenAndServe(":8181", http.HandlerFunc(Test))
 }

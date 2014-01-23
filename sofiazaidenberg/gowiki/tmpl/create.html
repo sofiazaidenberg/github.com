@@ -1,5 +1,11 @@
 <h1>Creating new page</h1>
 
+<p>[<a href="/">home</a>]</p>
+
+{{if .HasError}}
+<p><font color="red">{{.Error}}</font><br></p>
+{{end}}
+
 <form action="/save/new" method="POST">
 <div>
 Title:<br>
@@ -7,6 +13,6 @@ Title:<br>
 
 <div>
 Body:<br>
-<textarea name="body" rows="20" cols="80"></textarea></div>
+<textarea name="body" rows="20" cols="80">{{printf "%s" .Body}}</textarea></div>
 <div><input type="submit" value="Save"></div>
 </form>
