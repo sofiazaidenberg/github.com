@@ -4,19 +4,19 @@ import (
 	"errors"
 	"fmt"
 	"github.com/gorilla/sessions"
+	"html"
 	"html/template"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
 	"strings"
-		"html"
 )
 
 var tmplDir = "tmpl/"
 var dataDir = "data/"
 var templates = template.Must(template.ParseFiles(tmplDir+"edit.html", tmplDir+"view.html", tmplDir+"index.html", tmplDir+"create.html"))
-var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
+var validPath = regexp.MustCompile("^/(edit|save|view|delete)/([a-zA-Z0-9]+)$")
 var store = sessions.NewCookieStore([]byte("something-very-secret"))
 
 const PAGE_EXISTS string = "A page with this title already exists. Please choose a different title."
@@ -48,9 +48,17 @@ func (p *Page) save() error {
 	if p.Title == "" {
 		return errors.New(EMPTY_TITLE)
 	}
-	filename := p.Title + ".txt"
+	filename := dataDir + p.Title + ".txt"
 
-	return ioutil.WriteFile(dataDir+filename, []byte(html.EscapeString(string(p.Body))), 0600)
+	return ioutil.WriteFile(filename, []byte(html.EscapeString(string(p.Body))), 0600)
+}
+
+func (p *Page) del() error {
+	if p.Title == "" {
+		return errors.New(EMPTY_TITLE)
+	}
+
+	return os.Rename(dataDir+p.Title+".txt", dataDir+p.Title+".deleted")
 }
 
 func loadPage(title string) (*Page, error) {
@@ -160,6 +168,16 @@ func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 	http.Redirect(w, r, "/view/"+title, http.StatusFound)
 }
 
+func deleteHandler(w http.ResponseWriter, r *http.Request, title string) {
+	p := &Page{Title: title}
+	err := p.del()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
 func renderHomeTemplate(w http.ResponseWriter, s *Site) {
 	err := templates.ExecuteTemplate(w, "index.html", s)
 	if err != nil {
@@ -234,6 +252,7 @@ func main() {
 	http.HandleFunc("/save/", makeHandler(saveHandler))
 	http.HandleFunc("/save/new", saveNewHandler)
 	http.HandleFunc("/create/", createHandler)
+	http.HandleFunc("/delete/", makeHandler(deleteHandler))
 	http.HandleFunc("/", makeHomeHandler(homeHandler, "WiKi"))
 	//	pwd, err := os.Getwd()
 	//	if err == nil {
