@@ -10,7 +10,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
-	//	"time"
+		"html"
 )
 
 var tmplDir = "tmpl/"
@@ -19,6 +19,10 @@ var templates = template.Must(template.ParseFiles(tmplDir+"edit.html", tmplDir+"
 var validPath = regexp.MustCompile("^/(edit|save|view)/([a-zA-Z0-9]+)$")
 var store = sessions.NewCookieStore([]byte("something-very-secret"))
 
+const PAGE_EXISTS string = "A page with this title already exists. Please choose a different title."
+const EMPTY_TITLE string = "Empty title not admitted"
+const INVALID_TITLE string = "Invalid Page Title"
+
 type Site struct {
 	Name  string
 	Pages []string
@@ -26,7 +30,7 @@ type Site struct {
 
 type Page struct {
 	Title string
-	Body  []byte
+	Body  template.HTML
 	Error string
 }
 
@@ -34,12 +38,19 @@ func (p *Page) HasError() bool {
 	return p.Error != ""
 }
 
+func (p *Page) exists() bool {
+	file, err := os.Open(dataDir + p.Title + ".txt")
+	defer file.Close()
+	return !os.IsNotExist(err)
+}
+
 func (p *Page) save() error {
 	if p.Title == "" {
-		return errors.New("Empty title not admitted")
+		return errors.New(EMPTY_TITLE)
 	}
 	filename := p.Title + ".txt"
-	return ioutil.WriteFile(dataDir+filename, p.Body, 0600)
+
+	return ioutil.WriteFile(dataDir+filename, []byte(html.EscapeString(string(p.Body))), 0600)
 }
 
 func loadPage(title string) (*Page, error) {
@@ -48,7 +59,7 @@ func loadPage(title string) (*Page, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Page{Title: title, Body: body}, nil
+	return &Page{Title: title, Body: template.HTML(body)}, nil
 }
 
 //func handler(w http.ResponseWriter, r *http.Request) {
@@ -59,7 +70,7 @@ func getTitle(w http.ResponseWriter, r *http.Request) (string, error) {
 	m := validPath.FindStringSubmatch(r.URL.Path)
 	if m == nil {
 		http.NotFound(w, r)
-		return "", errors.New("Invalid Page Title")
+		return "", errors.New(INVALID_TITLE)
 	}
 	return m[2], nil // The title is the second subexpression.
 }
@@ -77,6 +88,8 @@ func viewHandler(w http.ResponseWriter, r *http.Request, title string) {
 		http.Redirect(w, r, "/edit/"+dataDir+title, http.StatusFound)
 		return
 	}
+
+	p.Body = template.HTML(strings.Replace(string(p.Body), "\n", "<br>", -1))
 	renderTemplate(w, "view", p)
 }
 
@@ -91,8 +104,12 @@ func editHandler(w http.ResponseWriter, r *http.Request, title string) {
 func createHandler(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "session-name")
 	p := new(Page)
+	if title, ok := session.Values["title"].(string); ok {
+		p.Title = title
+		session.Values["title"] = ""
+	}
 	if body, ok := session.Values["body"].(string); ok {
-		p.Body = []byte(body)
+		p.Body = template.HTML(body)
 		session.Values["body"] = ""
 	}
 	if err, ok := session.Values["error"].(string); ok {
@@ -106,22 +123,26 @@ func createHandler(w http.ResponseWriter, r *http.Request) {
 func saveNewHandler(w http.ResponseWriter, r *http.Request) {
 	title := r.FormValue("title")
 	if title == "" {
-		saveNewErrorHandler(w, r, errors.New("Empty title not admitted"))
+		saveNewErrorHandler(w, r, errors.New(EMPTY_TITLE))
 		return
 	}
-	m := validPath.FindStringSubmatch("/save/"+title)
+	m := validPath.FindStringSubmatch("/save/" + title)
 	if m == nil {
-		fmt.Println("invalid title")
-		saveNewErrorHandler(w, r, errors.New("Invalid title"))
+		saveNewErrorHandler(w, r, errors.New(INVALID_TITLE))
+		return
+	}
+	p := &Page{Title: m[2]}
+	if p.exists() {
+		saveNewErrorHandler(w, r, errors.New(PAGE_EXISTS))
 		return
 	}
 	saveHandler(w, r, m[2])
 }
 
 func saveNewErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
-	body := r.FormValue("body")
 	session, _ := store.Get(r, "session-name")
-	session.Values["body"] = body
+	session.Values["title"] = r.FormValue("title")
+	session.Values["body"] = r.FormValue("body")
 	session.Values["error"] = fmt.Sprintf("%s", err)
 	session.Save(r, w)
 
@@ -130,7 +151,7 @@ func saveNewErrorHandler(w http.ResponseWriter, r *http.Request, err error) {
 
 func saveHandler(w http.ResponseWriter, r *http.Request, title string) {
 	body := r.FormValue("body")
-	p := &Page{Title: title, Body: []byte(body)}
+	p := &Page{Title: title, Body: template.HTML(body)}
 	err := p.save()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -190,16 +211,6 @@ func makeHomeHandler(fn func(http.ResponseWriter, *http.Request, string), name s
 }
 
 func Test(w http.ResponseWriter, r *http.Request) {
-	//	c := &http.Cookie{
-	//		Name:		"foo",
-	//		Value:		"bar",
-	//		Expires:	time.Now().Add(1 * time.Hour),
-	//		Domain:		".godev.local",	// edit (or omit)
-	//		Path:		"/",		// ^ ditto
-	//		HttpOnly:	true,
-	//	}
-	//	//fmt.Fprintln(w, "Hello world")
-	//	http.SetCookie(w, c)
 	// Get a session. We're ignoring the error resulted from decoding an
 	// existing session: Get() always returns a session, even if empty.
 	session, _ := store.Get(r, "session-name")
