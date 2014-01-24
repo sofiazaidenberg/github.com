@@ -1,5 +1,5 @@
 <h1>{{.Title}}</h1>
 
-<p>[<a href="/delete/{{.Title}}">delete</a>] [<a href="/edit/{{.Title}}">edit</a>] [<a href="/create/">create</a>] [<a href="/">home</a>]</p>
+<p>[<a id="delete" href="/delete/{{.Title}}" onclick="return confirm('Are you sure you wish to delete this page?');">delete</a>] [<a href="/edit/{{.Title}}">edit</a>] [<a href="/create/">create</a>] [<a href="/">home</a>]</p>
 
 <div>{{.Body}}</div>

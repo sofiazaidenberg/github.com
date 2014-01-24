@@ -1,8 +1,24 @@
-<h1>Editing {{.Title}}</h1>
+<!DOCTYPE html>              
+<html>
 
-<p>[<a href="/">home</a>]</p>
+  <head>
+    <title>Sonia's GoWiKi</title>
+    <link rel="stylesheet" href="/static/css/main.css">
+    <link rel="stylesheet" href="/static/css/prettify.css">
+    <link href='http://fonts.googleapis.com/css?family=Lato:400,400italic|Arvo:400,400italic' rel='stylesheet' type='text/css'>
+  </head>
 
-<form action="/save/{{.Title}}" method="POST">
-<div><textarea name="body" rows="20" cols="80">{{printf "%s" .Body}}</textarea></div>
-<div><input type="submit" value="Save"></div>
-</form>
+  <body>
+    <div id="wrapper">
+      <h1>Editing {{.Title}}</h1>
+
+      <p>[<a href="/">home</a>]</p>
+
+      <form action="/save/{{.Title}}" method="POST">
+	<div><textarea name="body" rows="20" cols="80">{{printf "%s" .Body}}</textarea></div>
+	<div><input type="submit" value="Save"> <a id="cancel" href="/view/{{.Title}}" onclick="return confirm('All unsaved data will be lost.\nAre you sure you wish to cancel?');">Cancel</a></div>
+      </form>
+    </div>
+  </body>
+  
+</html>
